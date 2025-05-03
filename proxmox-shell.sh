@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # Automated Proxmox VM deployment script for Pterodactyl infrastructure (dedicated node setup)
-# Author: [Your Name]
-# Version: 2.6
+# Author: Oexyz
+# Version: 2.7
 
 # Ensure dialog is installed
 if ! command -v dialog &> /dev/null; then
@@ -78,7 +78,6 @@ if [ ! -f "$ISO_PATH" ]; then
 else
   echo "[+] ISO already exists."
 fi
-
 # Define Network options
 NET="virtio,bridge=$BRIDGE"
 
@@ -102,6 +101,9 @@ qm create $VMID \
 qm set $VMID --ciuser ubuntu --cipassword "$VM_PASSWORD"
 qm set $VMID --ipconfig0 ip=$STATIC_IP,gw=$GATEWAY
 
+# Ensure the snippets directory exists
+mkdir -p /var/lib/vz/snippets
+
 CLOUDINIT_SSH_DISABLE=$(cat <<EOF
 #cloud-config
 runcmd:
@@ -117,6 +119,7 @@ qm set $VMID --cicustom "user=local:snippets/disable-ssh-$VMID.yaml"
 
 # Start VM
 qm start $VMID
+
 # Install and configure service role if selected
 install_service() {
   case $SERVICE in
