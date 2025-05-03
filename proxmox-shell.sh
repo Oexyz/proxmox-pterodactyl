@@ -2,7 +2,7 @@
 
 # Automated Proxmox VM deployment script for Pterodactyl infrastructure (dedicated node setup)
 # Author: Oexyz
-# Version: 2.2
+# Version: 2.3
 
 # Ensure dialog is installed
 if ! command -v dialog &> /dev/null; then
@@ -50,8 +50,8 @@ else
 fi
 
 # Define ISO URL and local path for ISO image
-ISO_URL="https://github.com/ubuntu/ubuntu/releases/download/22.04.4/ubuntu-22.04.4-live-server-amd64.iso"
-ISO_NAME="ubuntu-22.04.4-live-server-amd64.iso"
+ISO_URL="https://cloud-images.ubuntu.com/oracular/current/oracular-server-cloudimg-amd64.img"
+ISO_NAME="oracular-server-cloudimg-amd64.img"
 ISO_PATH="/var/lib/vz/template/iso/$ISO_NAME"
 
 # Download ISO if not already downloaded
@@ -84,7 +84,6 @@ qm create $VMID \
 # Set Cloud-Init user, password, and network config
 qm set $VMID --ciuser ubuntu --cipassword "$VM_PASSWORD"
 qm set $VMID --ipconfig0 ip=$STATIC_IP,gw=$GATEWAY
-
 CLOUDINIT_SSH_DISABLE=$(cat <<EOF
 #cloud-config
 runcmd:
