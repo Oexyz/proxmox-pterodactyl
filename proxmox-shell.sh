@@ -2,7 +2,7 @@
 
 # Automated Proxmox VM deployment script for Pterodactyl infrastructure (dedicated node setup)
 # Author: Oexyz
-# Version: 2.8
+# Version: 3.0
 
 # Ensure dialog is installed
 if ! command -v dialog &> /dev/null; then
@@ -12,6 +12,7 @@ fi
 
 # Input parameters via dialog
 exec 3>&1
+
 clear
 VMID=$(dialog --inputbox "Enter VMID:" 8 40 2>&1 1>&3)
 
@@ -60,9 +61,12 @@ else
   clear
   MEMORY=$(dialog --inputbox "Enter Memory in MB:" 8 40 2>&1 1>&3)
   clear
-  STORAGE=$(dialog --inputbox "Enter Storage Pool Name (e.g. local-lvm):" 8 40 2>&1 1>&3)
+  STORAGE=$(dialog --menu "Select Storage Pool:" 15 50 4 \
+    $(pvesm status | awk 'NR>1 {print $1 " " $1 " off"}') \
+    2>&1 1>&3)
   clear
-  DISK_SIZE=$(dialog --inputbox "Enter Disk Size (e.g. 100G):" 8 40 2>&1 1>&3)
+  DISK_SIZE=$(dialog --inputbox "Enter Disk Size in GB:" 8 40 2>&1 1>&3)
+  DISK_SIZE="${DISK_SIZE}G"
 fi
 
 # Define ISO URL and local path for ISO image
@@ -92,16 +96,10 @@ qm create $VMID \
   --scsihw virtio-scsi-pci \
   --scsi0 $STORAGE:$DISK_SIZE \
   --ide2 $ISO_PATH,media=cdrom \
-  --boot order=scsi0,ide2 \
+  --boot order=ide2,scsi0 \
   --serial0 socket \
   --vga serial0 \
   --agent enabled=1
-
-# Ensure the VM configuration file is created
-if [ ! -f "/etc/pve/nodes/$(hostname)/qemu-server/$VMID.conf" ]; then
-  echo "[!] VM configuration file not found. Creating manually..."
-  qm create $VMID --name $VM_NAME --memory $MEMORY --cores $CPU --net0 $NET --scsihw virtio-scsi-pci --scsi0 $STORAGE:$DISK_SIZE --ide2 $ISO_PATH,media=cdrom --boot order=scsi0,ide2 --serial0 socket --vga serial0 --agent enabled=1
-fi
 
 # Set Cloud-Init user, password, and network config
 qm set $VMID --ciuser ubuntu --cipassword "$VM_PASSWORD"
@@ -162,4 +160,5 @@ fi
 
 # Notify user
 dialog --msgbox "VM $VMID ($VM_NAME) created with static IP $STATIC_IP and gateway $GATEWAY.\nService role: $SERVICE\nCores: $CPU | RAM: $MEMORY MB | Disk: $DISK_SIZE | Storage: $STORAGE | Bridge: $BRIDGE\n\nSSH will be automatically disabled on first boot via cloud-init. Use Proxmox GUI console for management." 14 60
+
 exec 3>&-
