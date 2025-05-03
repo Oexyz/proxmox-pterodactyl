@@ -2,7 +2,7 @@
 
 # Automated Proxmox VM deployment script for Pterodactyl infrastructure (dedicated node setup)
 # Author: Oexyz
-# Version: 2.7
+# Version: 2.8
 
 # Ensure dialog is installed
 if ! command -v dialog &> /dev/null; then
@@ -12,7 +12,6 @@ fi
 
 # Input parameters via dialog
 exec 3>&1
-
 clear
 VMID=$(dialog --inputbox "Enter VMID:" 8 40 2>&1 1>&3)
 
@@ -78,6 +77,7 @@ if [ ! -f "$ISO_PATH" ]; then
 else
   echo "[+] ISO already exists."
 fi
+
 # Define Network options
 NET="virtio,bridge=$BRIDGE"
 
@@ -96,6 +96,12 @@ qm create $VMID \
   --serial0 socket \
   --vga serial0 \
   --agent enabled=1
+
+# Ensure the VM configuration file is created
+if [ ! -f "/etc/pve/nodes/$(hostname)/qemu-server/$VMID.conf" ]; then
+  echo "[!] VM configuration file not found. Creating manually..."
+  qm create $VMID --name $VM_NAME --memory $MEMORY --cores $CPU --net0 $NET --scsihw virtio-scsi-pci --scsi0 $STORAGE:$DISK_SIZE --ide2 $ISO_PATH,media=cdrom --boot order=scsi0,ide2 --serial0 socket --vga serial0 --agent enabled=1
+fi
 
 # Set Cloud-Init user, password, and network config
 qm set $VMID --ciuser ubuntu --cipassword "$VM_PASSWORD"
@@ -156,5 +162,4 @@ fi
 
 # Notify user
 dialog --msgbox "VM $VMID ($VM_NAME) created with static IP $STATIC_IP and gateway $GATEWAY.\nService role: $SERVICE\nCores: $CPU | RAM: $MEMORY MB | Disk: $DISK_SIZE | Storage: $STORAGE | Bridge: $BRIDGE\n\nSSH will be automatically disabled on first boot via cloud-init. Use Proxmox GUI console for management." 14 60
-
 exec 3>&-
