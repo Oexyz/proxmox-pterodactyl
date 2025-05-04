@@ -2,7 +2,7 @@
 
 # Automated Proxmox VM deployment script for Pterodactyl infrastructure (dedicated node setup)
 # Author: Oexyz
-# Version: 3.4
+# Version: 3.6 (Ubuntu 24.04.2 LTS + ide2/boot fix)
 
 # Ensure dialog is installed
 if ! command -v dialog &> /dev/null; then
@@ -67,13 +67,13 @@ else
 fi
 
 # Define ISO URL and local path for ISO image
-ISO_URL="https://cloud-images.ubuntu.com/oracular/current/oracular-server-cloudimg-amd64.img"
-ISO_NAME="oracular-server-cloudimg-amd64.img"
+ISO_URL="https://releases.ubuntu.com/24.04/ubuntu-24.04.2-live-server-amd64.iso"
+ISO_NAME="ubuntu-24.04.2-live-server-amd64.iso"
 ISO_PATH="/var/lib/vz/template/iso/$ISO_NAME"
 
 # Download ISO if not already downloaded
 if [ ! -f "$ISO_PATH" ]; then
-  echo "[+] ISO not found — downloading from GitHub..."
+  echo "[+] ISO not found — downloading..."
   wget -O "$ISO_PATH" "$ISO_URL" || { echo "[!] ISO download failed"; exit 1; }
 else
   echo "[+] ISO already exists."
@@ -92,16 +92,14 @@ qm create $VMID \
   --net0 $NET \
   --scsihw virtio-scsi-pci \
   --scsi0 ${STORAGE}:${DISK_SIZE} \
-  --ide2 $ISO_PATH,media=cdrom \
-  --boot order=scsi0,ide2 \
+  --ide2 local:iso/$ISO_NAME,media=cdrom \
+  --boot order=scsi0;ide2 \
   --serial0 socket \
   --vga serial0 \
   --agent enabled=1
 
-# Wait to ensure config file is written
 sleep 2
 
-# Check if config file exists
 if [ ! -f "/etc/pve/nodes/$(hostname)/qemu-server/$VMID.conf" ]; then
   echo "[!] VM configuration file was not created. Aborting."
   exit 1
@@ -127,25 +125,21 @@ qm set $VMID --cicustom "user=local:snippets/disable-ssh-$VMID.yaml"
 echo -e "\n[✔️] VM created. Starting VM..."
 qm start $VMID
 
-# Wait for the VM to be running
 echo -n "[⏳] Waiting for VM to start..."
 while ! qm status $VMID | grep -q "status: running"; do
   sleep 1
 done
 echo -e "\r[✔️] VM is running."
 
-# Wait for cloud-init to finish
 echo -n "[⏳] Waiting for cloud-init to finish..."
 while ! qm guest exec $VMID --timeout 5 -- bash -c "test -f /var/lib/cloud/instance/boot-finished" &>/dev/null; do
   sleep 2
 done
 echo -e "\r[✔️] Cloud-init completed."
 
-# Optional: Wait for package updates (if any)
 echo "[⏳] Waiting for system updates (if any)..."
 sleep 10
 
-# Proceed with service installation
 install_service() {
   case $SERVICE in
     panel)
