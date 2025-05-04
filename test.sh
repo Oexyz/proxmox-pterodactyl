@@ -30,13 +30,7 @@ clear
 VM_NAME=$(dialog --inputbox "Enter VM Name:" 8 40 2>&1 1>&3)
 
 clear
-SERVICE=$(dialog --menu "Select Service Role:" 15 50 5 \
-  panel "Pterodactyl Panel" \
-  mariadb "MariaDB Cluster" \
-  redis "Redis Cache" \
-  haproxy "HAProxy Load Balancer" \
-  none "No service installation" \
-  2>&1 1>&3)
+SERVICE=$(dialog --menu "Select Service Role:" 15 50 5   panel "Pterodactyl Panel"   mariadb "MariaDB Cluster"   redis "Redis Cache"   haproxy "HAProxy Load Balancer"   none "No service installation"   2>&1 1>&3)
 
 clear
 STATIC_IP=$(dialog --inputbox "Enter Static IP Address (e.g. 192.168.100.10/24):" 8 50 2>&1 1>&3)
@@ -48,16 +42,30 @@ clear
 VM_PASSWORD=$(dialog --insecure --passwordbox "Enter VM User Password:" 8 40 2>&1 1>&3)
 
 clear
-BRIDGE=$(dialog --radiolist "Select Network Bridge:" 15 50 4 \
-  vmbr1 "Default bridge" on \
-  vmbr0 "Alternative bridge" off \
-  2>&1 1>&3)
+BRIDGE=$(dialog --radiolist "Select Network Bridge:" 15 50 4   vmbr1 "Default bridge" on   vmbr0 "Alternative bridge" off   2>&1 1>&3)
 
-# === Defaults ===
-CPU=$DEFAULT_CPU
-MEMORY=$DEFAULT_RAM_MB
-DISK_SIZE="${DEFAULT_DISK_GB}G"
-STORAGE="local-lvm"
+# === User Input for Default or Custom Hardware Configuration ===
+clear
+USE_DEFAULT=$(dialog --yesno "Use default hardware configuration?\n\nCPU: 32 cores (2 sockets)\nRAM: 240 GB\nDisk: 3 TB" 10 50 3>&1 1>&2 2>&3; echo $?)
+
+if [ "$USE_DEFAULT" -eq 0 ]; then
+  CPU=$DEFAULT_CPU
+  SOCKETS=2
+  MEMORY=$DEFAULT_RAM_MB
+  DISK_SIZE="${DEFAULT_DISK_GB}G"
+else
+  clear
+  CPU=$(dialog --inputbox "Enter number of CPU cores:" 8 40 2>&1 1>&3)
+  SOCKETS=$(dialog --inputbox "Enter number of CPU sockets (default: 1):" 8 40 2>&1 1>&3)
+  SOCKETS=${SOCKETS:-1}
+
+  clear
+  MEMORY=$(dialog --inputbox "Enter RAM in MB:" 8 40 2>&1 1>&3)
+
+  clear
+  DISK_GB=$(dialog --inputbox "Enter Disk Size in GB:" 8 40 2>&1 1>&3)
+  DISK_SIZE="${DISK_GB}G"
+fi
 
 # === Download Debian Image ===
 mkdir -p /var/lib/vz/template/qcow
@@ -70,27 +78,13 @@ fi
 
 # === Create VM ===
 echo "[+] Creating VM $VMID - $VM_NAME ($SERVICE)"
-qm create $VMID \
-  --name $VM_NAME \
-  --memory $MEMORY \
-  --cores $CPU \
-  --net0 virtio,bridge=$BRIDGE \
-  --scsihw virtio-scsi-pci \
-  --agent enabled=1 \
-  --bios ovmf \
-  --machine pc-i440fx-8.1 \
-  --serial0 socket \
-  --vga serial0
+qm create $VMID   --name $VM_NAME   --memory $MEMORY   --cores $CPU   --sockets $SOCKETS   --net0 virtio,bridge=$BRIDGE   --scsihw virtio-scsi-pci   --agent enabled=1   --bios ovmf   --machine pc-i440fx-8.1   --serial0 socket   --vga serial0
 
 # === Import Disk ===
 qm importdisk $VMID "$DEBIAN_IMAGE_PATH" $STORAGE --format qcow2
 
 # === Attach Disk and Configure ===
-qm set $VMID \
-  --scsi0 $STORAGE:vm-$VMID-disk-0 \
-  --boot order=scsi0 \
-  --bootdisk scsi0 \
-  --efidisk0 ${STORAGE}:4,efitype=4m,format=raw
+qm set $VMID   --scsi0 $STORAGE:vm-$VMID-disk-0   --boot order=scsi0   --bootdisk scsi0   --efidisk0 ${STORAGE}:4,efitype=4m,format=raw
 
 # === Resize Disk ===
 qm resize $VMID scsi0 $DISK_SIZE
