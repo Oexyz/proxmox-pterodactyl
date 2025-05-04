@@ -2,7 +2,7 @@
 
 # Automated Proxmox VM deployment script for Pterodactyl infrastructure (dedicated node setup)
 # Author: Oexyz
-# Version: 3.7 (Fixes for LVM volume and boot order)
+# Version: 3.8 (Hardware config + boot fix + cloud-init wait)
 
 # Ensure dialog is installed
 if ! command -v dialog &> /dev/null; then
@@ -19,7 +19,13 @@ clear
 VM_NAME=$(dialog --inputbox "Enter VM Name:" 8 40 2>&1 1>&3)
 
 clear
-SERVICE=$(dialog --menu "Select Service Role:" 15 50 5   panel "Pterodactyl Panel"   mariadb "MariaDB Cluster"   redis "Redis Cache"   haproxy "HAProxy Load Balancer"   none "No service installation"   2>&1 1>&3)
+SERVICE=$(dialog --menu "Select Service Role:" 15 50 5 \
+  panel "Pterodactyl Panel" \
+  mariadb "MariaDB Cluster" \
+  redis "Redis Cache" \
+  haproxy "HAProxy Load Balancer" \
+  none "No service installation" \
+  2>&1 1>&3)
 
 clear
 STATIC_IP=$(dialog --inputbox "Enter Static IP Address (e.g. 192.168.100.10/24):" 8 50 2>&1 1>&3)
@@ -31,35 +37,26 @@ clear
 VM_PASSWORD=$(dialog --insecure --passwordbox "Enter VM User Password:" 8 40 2>&1 1>&3)
 
 clear
-BRIDGE=$(dialog --radiolist "Select Network Bridge:" 15 50 4   vmbr1 "Default bridge" on   vmbr0 "Alternative bridge" off   2>&1 1>&3)
+BRIDGE=$(dialog --radiolist "Select Network Bridge:" 15 50 4 \
+  vmbr1 "Default bridge" on \
+  vmbr0 "Alternative bridge" off \
+  2>&1 1>&3)
 
 clear
-RESOURCE_OPTION=$(dialog --menu "Choose resource profile:" 12 50 3   1 "Default: 32 cores, 240GB RAM, 3TB Disk"   2 "Custom configuration"   2>&1 1>&3)
+CPU=$(dialog --inputbox "Enter Number of CPU Cores:" 8 40 2>&1 1>&3)
+clear
+MEMORY=$(dialog --inputbox "Enter Memory in MB:" 8 40 2>&1 1>&3)
+clear
+STORAGE=$(dialog --inputbox "Enter Storage Pool Name (e.g. local-lvm):" 8 40 2>&1 1>&3)
+clear
+DISK_SIZE=$(dialog --inputbox "Enter Disk Size in GB:" 8 40 2>&1 1>&3)
+DISK_SIZE="${DISK_SIZE}G"
 
-if [[ "$RESOURCE_OPTION" == "1" ]]; then
-  CPU=32
-  MEMORY=245760
-  clear
-  STORAGE=$(dialog --inputbox "Enter Storage Pool Name (e.g. local-lvm):" 8 40 2>&1 1>&3)
-  DISK_SIZE=3000G
-else
-  clear
-  CPU=$(dialog --inputbox "Enter Number of CPU Cores:" 8 40 2>&1 1>&3)
-  clear
-  MEMORY=$(dialog --inputbox "Enter Memory in MB:" 8 40 2>&1 1>&3)
-  clear
-  STORAGE=$(dialog --inputbox "Enter Storage Pool Name (e.g. local-lvm):" 8 40 2>&1 1>&3)
-  clear
-  DISK_SIZE=$(dialog --inputbox "Enter Disk Size in GB:" 8 40 2>&1 1>&3)
-  DISK_SIZE="${DISK_SIZE}G"
-fi
-
-# Define ISO URL and local path for ISO image
+# ISO image
 ISO_URL="https://releases.ubuntu.com/24.04/ubuntu-24.04.2-live-server-amd64.iso"
 ISO_NAME="ubuntu-24.04.2-live-server-amd64.iso"
 ISO_PATH="/var/lib/vz/template/iso/$ISO_NAME"
 
-# Download ISO if not already downloaded
 if [ ! -f "$ISO_PATH" ]; then
   echo "[+] ISO not found — downloading..."
   wget -O "$ISO_PATH" "$ISO_URL" || { echo "[!] ISO download failed"; exit 1; }
@@ -67,29 +64,37 @@ else
   echo "[+] ISO already exists."
 fi
 
-# Define Network options
-NET="virtio,bridge=$BRIDGE"
-
 # Create VM
-echo "Creating VM $VMID - $VM_NAME ($SERVICE)"
+echo "[+] Creating VM $VMID - $VM_NAME ($SERVICE)"
 
-qm create $VMID   --name $VM_NAME   --memory $MEMORY   --cores $CPU   --net0 $NET   --scsihw virtio-scsi-pci   --scsi0 ${STORAGE}:${DISK_SIZE}   --serial0 socket   --vga serial0   --agent enabled=1
+qm create $VMID \
+  --name $VM_NAME \
+  --memory $MEMORY \
+  --cores $CPU \
+  --net0 virtio,bridge=$BRIDGE \
+  --scsihw virtio-scsi-pci \
+  --scsi0 ${STORAGE}:${DISK_SIZE},discard=on,ssd=1 \
+  --ide2 local:iso/$ISO_NAME,media=cdrom \
+  --boot order=scsi0,ide2 \
+  --serial0 socket \
+  --vga serial0 \
+  --machine i440fx \
+  --bios ovmf \
+  --efidisk0 ${STORAGE}:4,efitype=4m,format=raw \
+  --agent enabled=1
 
-qm set $VMID --ide2 local:iso/$ISO_NAME,media=cdrom
-qm set $VMID --boot order=scsi0,ide2
-
+# Wait for config file
 sleep 2
-
 if [ ! -f "/etc/pve/nodes/$(hostname)/qemu-server/$VMID.conf" ]; then
   echo "[!] VM configuration file was not created. Aborting."
   exit 1
 fi
 
+# Cloud-init setup
 qm set $VMID --ciuser ubuntu --cipassword "$VM_PASSWORD"
 qm set $VMID --ipconfig0 ip=$STATIC_IP,gw=$GATEWAY
 
 mkdir -p /var/lib/vz/snippets
-
 CLOUDINIT_SSH_DISABLE=$(cat <<EOF
 #cloud-config
 runcmd:
@@ -98,31 +103,32 @@ runcmd:
   - rm -f /etc/ssh/sshd_config
 EOF
 )
-
 echo "$CLOUDINIT_SSH_DISABLE" > /var/lib/vz/snippets/disable-ssh-$VMID.yaml
 qm set $VMID --cicustom "user=local:snippets/disable-ssh-$VMID.yaml"
 
-echo -e "
-[✔️] VM created. Starting VM..."
+# Start VM
+echo -e "\n[✔️] VM created. Starting VM..."
 qm start $VMID
 
+# Wait for VM to boot
 echo -n "[⏳] Waiting for VM to start..."
 while ! qm status $VMID | grep -q "status: running"; do
   sleep 1
 done
-echo -e "
-[✔️] VM is running."
+echo -e "\r[✔️] VM is running."
 
+# Wait for cloud-init
 echo -n "[⏳] Waiting for cloud-init to finish..."
 while ! qm guest exec $VMID --timeout 5 -- bash -c "test -f /var/lib/cloud/instance/boot-finished" &>/dev/null; do
   sleep 2
 done
-echo -e "
-[✔️] Cloud-init completed."
+echo -e "\r[✔️] Cloud-init completed."
 
+# Optional: Wait for updates
 echo "[⏳] Waiting for system updates (if any)..."
 sleep 10
 
+# Optional service installation
 install_service() {
   case $SERVICE in
     panel)
@@ -155,13 +161,6 @@ if [[ "$SERVICE" != "none" ]]; then
   install_service
 fi
 
-dialog --msgbox "✅ VM $VMID ($VM_NAME) is ready!
-
-Static IP: $STATIC_IP
-Gateway: $GATEWAY
-Service: $SERVICE
-Cores: $CPU | RAM: $MEMORY MB | Disk: $DISK_SIZE
-
-Use the Proxmox console to access the VM." 14 60
+dialog --msgbox "✅ VM $VMID ($VM_NAME) is ready!\n\nStatic IP: $STATIC_IP\nGateway: $GATEWAY\nService: $SERVICE\nCores: $CPU | RAM: $MEMORY MB | Disk: $DISK_SIZE\n\nUse the Proxmox console to access the VM." 14 60
 
 exec 3>&-
