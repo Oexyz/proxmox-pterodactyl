@@ -2,7 +2,7 @@
 
 # Automated Proxmox VM deployment script for Pterodactyl infrastructure (dedicated node setup)
 # Author: Oexyz
-# Version: 3.6 (Ubuntu 24.04.2 LTS + ide2/boot fix)
+# Version: 3.7 (Fixes for LVM volume and boot order)
 
 # Ensure dialog is installed
 if ! command -v dialog &> /dev/null; then
@@ -97,7 +97,7 @@ qm create $VMID \
   --agent enabled=1
 
 qm set $VMID --ide2 local:iso/$ISO_NAME,media=cdrom
-qm set $VMID --boot order=scsi0;ide2
+qm set $VMID --boot order=scsi0,ide2
 
 sleep 2
 
