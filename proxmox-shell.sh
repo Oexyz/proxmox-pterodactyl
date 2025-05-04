@@ -91,9 +91,9 @@ qm create $VMID \
   --cores $CPU \
   --net0 $NET \
   --scsihw virtio-scsi-pci \
-  --scsi0 $STORAGE:$DISK_SIZE \
+  --scsi0 ${STORAGE}:${DISK_SIZE} \
   --ide2 $ISO_PATH,media=cdrom \
-  --boot order=scsi0;ide2 \
+  --boot order=scsi0,ide2 \
   --serial0 socket \
   --vga serial0 \
   --agent enabled=1
