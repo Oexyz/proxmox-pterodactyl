@@ -2,7 +2,7 @@
 
 # Automated Proxmox VM deployment script for Pterodactyl infrastructure (dedicated node setup)
 # Author: Oexyz
-# Version: 3.3
+# Version: 3.4
 
 # Ensure dialog is installed
 if ! command -v dialog &> /dev/null; then
@@ -93,7 +93,7 @@ qm create $VMID \
   --scsihw virtio-scsi-pci \
   --scsi0 $STORAGE:$DISK_SIZE \
   --ide2 $ISO_PATH,media=cdrom \
-  --boot order=ide2,scsi0 \
+  --boot order=scsi0;ide2 \
   --serial0 socket \
   --vga serial0 \
   --agent enabled=1
