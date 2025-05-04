@@ -2,7 +2,7 @@
 
 # Automated Proxmox VM deployment script for Pterodactyl infrastructure (dedicated node setup)
 # Author: Oexyz
-# Version: 3.8 (Hardware config + boot fix + cloud-init wait)
+# Version: 3.8.1 (Updated for Proxmox 8.4.0 compatibility)
 
 # Ensure dialog is installed
 if ! command -v dialog &> /dev/null; then
@@ -75,10 +75,11 @@ qm create $VMID \
   --scsihw virtio-scsi-pci \
   --scsi0 ${STORAGE}:${DISK_SIZE},discard=on,ssd=1 \
   --ide2 local:iso/$ISO_NAME,media=cdrom \
-  --boot order=scsi0,ide2 \
+  --boot order=scsi0;ide2 \
+  --bootdisk scsi0 \
   --serial0 socket \
   --vga serial0 \
-  --machine i440fx \
+  --machine pc-i440fx-8.1 \
   --bios ovmf \
   --efidisk0 ${STORAGE}:4,efitype=4m,format=raw \
   --agent enabled=1
