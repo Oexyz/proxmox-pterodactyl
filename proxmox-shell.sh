@@ -92,11 +92,12 @@ qm create $VMID \
   --net0 $NET \
   --scsihw virtio-scsi-pci \
   --scsi0 ${STORAGE}:${DISK_SIZE} \
-  --ide2 local:iso/$ISO_NAME,media=cdrom \
-  --boot order=scsi0;ide2 \
   --serial0 socket \
   --vga serial0 \
   --agent enabled=1
+
+qm set $VMID --ide2 local:iso/$ISO_NAME,media=cdrom
+qm set $VMID --boot order=scsi0;ide2
 
 sleep 2
 
