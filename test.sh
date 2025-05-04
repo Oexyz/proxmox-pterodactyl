@@ -80,8 +80,20 @@ fi
 echo "[+] Creating VM $VMID - $VM_NAME ($SERVICE)"
 qm create $VMID   --name $VM_NAME   --memory $MEMORY   --cores $CPU   --sockets $SOCKETS   --net0 virtio,bridge=$BRIDGE   --scsihw virtio-scsi-pci   --agent enabled=1   --bios ovmf   --machine pc-i440fx-8.1   --serial0 socket   --vga serial0
 
-# === Import Disk ===
+# Ask user for target disk device (e.g., scsi0, sata0, ide0)
+clear
+DISK_DEVICE=$(dialog --inputbox "Enter disk device to attach (e.g., scsi0):" 8 40 "scsi0" 2>&1 1>&3)
+
+# Ask user for storage target (e.g., local-lvm, fast-ssd)
+clear
+STORAGE=$(dialog --inputbox "Enter storage target (e.g., local-lvm):" 8 40 "local-lvm" 2>&1 1>&3)
+
+# Import disk
 qm importdisk $VMID "$DEBIAN_IMAGE_PATH" $STORAGE --format qcow2
+
+# Attach disk to specified device
+qm set $VMID --${DISK_DEVICE} $STORAGE:vm-${VMID}-disk-0
+
 
 # === Attach Disk and Configure ===
 qm set $VMID   --scsi0 $STORAGE:vm-$VMID-disk-0   --boot order=scsi0   --bootdisk scsi0   --efidisk0 ${STORAGE}:4,efitype=4m,format=raw
